@@ -1,15 +1,9 @@
 """
 BPE Tokenizer 实现
-基于 GPT-2 的原始实现
-
-功能:
-- 训练 BPE 词表
-- 编码文本为 token ids
-- 解码 token ids 为文本
+基于标准BPE算法
 """
 
-from collections import Counter, defaultdict
-import re
+from collections import Counter
 from typing import List, Tuple, Dict
 
 
@@ -19,91 +13,106 @@ class BPETokenizer:
     def __init__(self, vocab_size: int = 5000, dropout: int = None):
         self.vocab_size = vocab_size
         self.dropout = dropout
-        self.merges: List[Tuple[int, int]] = []  # 记录所有合并操作
+        self.merges: List[Tuple[int, int]] = []  # 合并规则列表
         self.vocab: Dict[int, bytes] = {}  # 最终词表
 
-    def get_stats(self, words: Counter) -> Counter:
-        """统计所有字符对的频率"""
-        pairs = Counter()
-        for word, freq in words.items():
-            symbols = word.split()
-            for i in range(len(symbols) - 1):
-                pairs[(symbols[i], symbols[i + 1])] += freq
-        return pairs
-
-    def merge_vocab(self, words: Counter, pair: Tuple[int, int]) -> Counter:
-        """合并所有词中的指定字符对"""
-        new_words = Counter()
-        first, second = pair
-
-        for word, freq in words.items():
-            new_word = word.replace(f'{first} {second}', f'{first}{second}')
-            new_words[new_word] = freq
-
-        return new_words
-
     def train(self, text: str, verbose: bool = True):
-        """
-        训练 BPE 词表
+        """训练 BPE 词表"""
+        # 初始化词表：256个字节
+        self.vocab = {i: bytes([i]) for i in range(256)}
 
-        参数:
-            text: 训练文本
-            verbose: 是否打印训练过程
-        """
-        # 1. 初始化：将文本转为字节序列
+        # 将文本转为字节序列元组
         words = Counter()
         for line in text.split('\n'):
             if not line.strip():
                 continue
-            tokens = list(line.encode('utf-8'))
-            word = ' '.join([str(t) for t in tokens])
-            words[word] += 1
+            tokens = tuple(line.encode('utf-8'))
+            words[tokens] += 1
 
         if verbose:
             print(f"初始词汇量: {len(words)}")
 
-        # 2. 迭代合并
+        # 迭代合并
         for i in range(self.vocab_size - 256):
-            pairs = self.get_stats(words)
-            if not pairs:
+            # 统计所有字符对的频率
+            pair_counts = Counter()
+            for word_tokens, freq in words.items():
+                for j in range(len(word_tokens) - 1):
+                    pair = (word_tokens[j], word_tokens[j + 1])
+                    pair_counts[pair] += freq
+
+            if not pair_counts:
                 break
 
-            best = pairs.most_common(1)[0][0]
-            words = self.merge_vocab(words, best)
-            self.merges.append(best)
+            # 贪心选择最高频的字符对
+            best_pair = pair_counts.most_common(1)[0][0]
+            self.merges.append(best_pair)
+
+            # 合并所有词中的该字符对
+            new_words = Counter()
+            a, b = best_pair
+            for word_tokens, freq in words.items():
+                new_tokens = []
+                j = 0
+                while j < len(word_tokens):
+                    if j < len(word_tokens) - 1 and word_tokens[j] == a and word_tokens[j + 1] == b:
+                        j += 2
+                    else:
+                        new_tokens.append(word_tokens[j])
+                        j += 1
+                new_words[tuple(new_tokens)] = freq
+            words = new_words
 
             if verbose and (i + 1) % 1000 == 0:
                 print(f"已合并 {i + 1} 次, 当前词表大小: {256 + i + 1}")
 
-        # 3. 构建最终词表
-        self.vocab = {i: bytes([i]) for i in range(256)}
+        # 构建词表
         for i, (a, b) in enumerate(self.merges):
-            self.vocab[256 + i] = self.vocab[a] + self.vocab[b]
+            # a和b是原始字节值(0-255)，直接用bytes([a]) + bytes([b])构建
+            self.vocab[256 + i] = bytes([a]) + bytes([b])
 
     def encode(self, text: str) -> List[int]:
-        """对文本进行编码"""
+        """编码文本"""
         tokens = list(text.encode('utf-8'))
 
-        for merge in self.merges:
-            new_tokens = []
+        # 持续查找可合并的字符对并合并
+        changed = True
+        while changed:
+            changed = False
             i = 0
+            new_tokens = []
             while i < len(tokens):
-                if i < len(tokens) - 1 and tokens[i] == merge[0] and tokens[i + 1] == merge[1]:
-                    new_tokens.append(256 + self.merges.index(merge))
-                    i += 2
-                else:
-                    new_tokens.append(tokens[i])
-                    i += 1
+                if i < len(tokens) - 1:
+                    pair = (tokens[i], tokens[i + 1])
+                    if pair in self.merges:
+                        merge_idx = self.merges.index(pair)
+                        new_tokens.append(256 + merge_idx)
+                        i += 2
+                        changed = True
+                        continue
+                new_tokens.append(tokens[i])
+                i += 1
             tokens = new_tokens
 
         return tokens
 
     def decode(self, ids: List[int]) -> str:
-        """对 token ids 进行解码"""
-        return b''.join([bytes([id_]) for id_ in ids]).decode('utf-8', errors='replace')
+        """解码 token ids"""
+        result = []
+        for id_ in ids:
+            if id_ < 256:
+                result.append(id_)
+            else:
+                idx = id_ - 256
+                if 0 <= idx < len(self.merges):
+                    a, b = self.merges[idx]
+                    result.extend([a, b])
+                else:
+                    result.append(id_)
+        return bytes(result).decode('utf-8', errors='replace')
 
     def save(self, path: str):
-        """保存词表和合并规则"""
+        """保存词表"""
         import json
         data = {
             'vocab': {str(k): v.hex() for k, v in self.vocab.items()},
@@ -113,43 +122,22 @@ class BPETokenizer:
             json.dump(data, f)
 
     def load(self, path: str):
-        """加载词表和合并规则"""
+        """加载词表"""
         import json
         with open(path, 'r') as f:
             data = json.load(f)
-
         self.vocab = {int(k): bytes.fromhex(v) for k, v in data['vocab'].items()}
         self.merges = [tuple(m) for m in data['merges']]
 
 
-def get_encoder(model_name: str = "gpt2"):
-    """获取预训练的 GPT-2 encoder"""
-    import tiktoken
-    return tiktoken.get_encoding(model_name)
-
-
 if __name__ == "__main__":
-    # 测试代码
-    text = """
-    DeepSeek is amazing! The model understands context very well.
-    I love using DeepSeek for coding tasks. It's truly revolutionary.
-    """
+    text = "hello world hello world hello"
+    bpe = BPETokenizer(vocab_size=300)
+    bpe.train(text, verbose=False)
 
-    bpe = BPETokenizer(vocab_size=2000)
-    bpe.train(text)
+    ids = bpe.encode("hello")
+    print(f"'hello' encoded: {ids}")
 
-    # 测试编码
-    sentence = "DeepSeek"
-    ids = bpe.encode(sentence)
-    print(f"'{sentence}' 编码为: {ids}")
-
-    # 测试解码
     decoded = bpe.decode(ids)
-    print(f"解码回: '{decoded}'")
-
-    # 使用 tiktoken
-    print("\n使用 tiktoken:")
-    enc = get_encoder("gpt2")
-    tokens = enc.encode("DeepSeek is fantastic!")
-    print(f"GPT-2 编码: {tokens}")
-    print(f"GPT-2 解码: {enc.decode(tokens)}")
+    print(f"decoded: '{decoded}'")
+    print(f"correct: {decoded == 'hello'}")

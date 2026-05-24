@@ -37,7 +37,7 @@ def standard_attention(
     scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(d_k)
 
     if mask is not None:
-        scores = scores.masked_fill(mask == 0, float('-inf'))
+        scores = scores.masked_fill(~mask, float('-inf'))
 
     # Softmax
     attention_weights = F.softmax(scores, dim=-1)

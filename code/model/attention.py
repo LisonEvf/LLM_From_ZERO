@@ -143,10 +143,16 @@ class FlashAttention(nn.Module):
         K = self.W_k(key).view(batch_size, seq_len_k, self.num_heads, self.d_k).transpose(1, 2)
         V = self.W_v(value).view(batch_size, seq_len_k, self.num_heads, self.d_k).transpose(1, 2)
 
+        # 转换为 SDPA 期望的加性掩码 (0=保留, -inf=屏蔽)
+        additive_mask = None
+        if mask is not None:
+            additive_mask = torch.zeros_like(mask, dtype=Q.dtype)
+            additive_mask[~mask] = float('-inf')
+
         # 使用 SDPA (FlashAttention)
         output = F.scaled_dot_product_attention(
             Q, K, V,
-            attn_mask=mask,
+            attn_mask=additive_mask,
             is_causal=is_causal,
             dropout_p=self.dropout if self.training else 0.0
         )

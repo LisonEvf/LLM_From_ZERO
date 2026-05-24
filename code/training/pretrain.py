@@ -31,10 +31,8 @@ def process_batch(batch, device):
     input_ids, targets = batch
     input_ids = input_ids.to(device)
     targets = targets.to(device)
-    # 输入为前n-1个token，目标为后n-1个token
-    inputs = input_ids[:, :-1]
-    targets = targets[:, 1:]
-    return inputs, targets
+    # TextDataset已返回正确的输入-目标对，直接使用
+    return input_ids, targets
 
 
 class CasualMaskDataLoader(DataLoader):

@@ -133,13 +133,13 @@ class LoRAModel(nn.Module):
             parent = self.base_model
             attr_name = name
 
-        # 复制原始权重
+        # 获取原始层并复制权重
         original = parent.get_submodule(attr_name) if '.' in name else getattr(parent, attr_name)
         lora_layer.weight.data = original.weight.data.clone()
         if original.bias is not None:
             lora_layer.bias.data = original.bias.data.clone()
 
-        # 替换
+        # 直接设置到父模块（避免副本问题）
         setattr(parent, attr_name, lora_layer)
         self.replace_layers[name] = lora_layer
 

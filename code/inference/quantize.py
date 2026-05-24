@@ -69,7 +69,9 @@ class INT4Quantizer(Quantizer):
 
     def __init__(self, bits: int = 4, group_size: int = 128):
         super().__init__(bits, group_size)
-        self.max_val = 7  # INT4 范围: -8 到 7
+        # INT4 对称量化范围: -8 到 7 (2^3-1=7)
+        # 但为了更好的对称性，通常用 -7 到 7 或 -8 到 7
+        self.max_val = 7
 
     def quantize(self, weight: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -85,7 +87,7 @@ class INT4Quantizer(Quantizer):
         scale = reshaped.abs().max(dim=-1)[0] / self.max_val
         scale = scale.clamp(min=1e-8)
 
-        # 量化
+        # 量化到 [-8, 7]
         qweight = torch.round(reshaped / scale.unsqueeze(-1)).clamp(-8, 7).to(torch.int8)
 
         return qweight, scale

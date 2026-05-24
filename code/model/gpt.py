@@ -134,13 +134,7 @@ class GPTModel(nn.Module):
             # 取最后一个位置的 logits
             logits = logits[:, -1, :] / temperature
 
-            # Top-k 过滤
-            if top_k is not None:
-                topk_logits, topk_indices = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits = torch.full_like(logits, float('-inf'))
-                logits.scatter_(1, topk_indices, topk_logits)
-
-            # Top-p (nucleus) 过滤
+            # Top-p (nucleus) 过滤 - 先应用
             if top_p is not None:
                 sorted_logits, sorted_indices = torch.sort(logits, descending=True)
                 cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
@@ -151,6 +145,12 @@ class GPTModel(nn.Module):
 
                 indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
                 logits[indices_to_remove] = float('-inf')
+
+            # Top-k 过滤 - 后应用
+            if top_k is not None:
+                topk_logits, topk_indices = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits = torch.full_like(logits, float('-inf'))
+                logits.scatter_(1, topk_indices, topk_logits)
 
             # 采样
             probs = F.softmax(logits, dim=-1)
