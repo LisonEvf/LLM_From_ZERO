@@ -1,0 +1,113 @@
+<mxfile host="app.diagrams.net" modified="2024-01-01T00:00:00.000Z" agent="Claude" version="21.0.0">
+  <diagram id="attention-flow" name="Attention计算流程">
+    <mxGraphModel dx="1200" dy="900" grid="1" guides="1" to="1">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="title" value="缩放点积注意力计算流程" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=18;fontStyle=1"
+                vertex="1" parent="1">
+          <mxGeometry x="350" y="20" width="300" height="30"/>
+        </mxCell>
+
+        <!-- Q Matrix -->
+        <mxCell id="q" value="Q&#xA;(Query)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf"
+                vertex="1" parent="1">
+          <mxGeometry x="50" y="100" width="120" height="80"/>
+        </mxCell>
+
+        <!-- K Matrix -->
+        <mxCell id="k" value="K&#xA;(Key)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656"
+                vertex="1" parent="1">
+          <mxGeometry x="250" y="100" width="120" height="80"/>
+        </mxCell>
+
+        <!-- V Matrix -->
+        <mxCell id="v" value="V&#xA;(Value)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366"
+                vertex="1" parent="1">
+          <mxGeometry x="530" y="100" width="120" height="80"/>
+        </mxCell>
+
+        <!-- Step 1: QK^T -->
+        <mxCell id="step1_box" value="1. 计算 QK&#xB7;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450"
+                vertex="1" parent="1">
+          <mxGeometry x="150" y="230" width="200" height="50"/>
+        </mxCell>
+
+        <!-- Arrow Q->Step1 -->
+        <mxCell id="arr1" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0"
+                edge="1" parent="1" source="q" target="step1_box">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrow K->Step1 -->
+        <mxCell id="arr2" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0"
+                edge="1" parent="1" source="k" target="step1_box">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 2: Scale -->
+        <mxCell id="step2_box" value="2. 缩放 &#x221A;d&#x2096;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450"
+                vertex="1" parent="1">
+          <mxGeometry x="150" y="320" width="200" height="50"/>
+        </mxCell>
+
+        <!-- Arrow Step1->Step2 -->
+        <mxCell id="arr3" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0"
+                edge="1" parent="1" source="step1_box" target="step2_box">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 3: Softmax -->
+        <mxCell id="step3_box" value="3. Softmax" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450"
+                vertex="1" parent="1">
+          <mxGeometry x="150" y="410" width="200" height="50"/>
+        </mxCell>
+
+        <!-- Arrow Step2->Step3 -->
+        <mxCell id="arr4" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0"
+                edge="1" parent="1" source="step2_box" target="step3_box">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Step 4: Multiply V -->
+        <mxCell id="step4_box" value="4. 乘以 V" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450"
+                vertex="1" parent="1">
+          <mxGeometry x="400" y="410" width="200" height="50"/>
+        </mxCell>
+
+        <!-- Arrow Step3->Step4 -->
+        <mxCell id="arr5" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0"
+                edge="1" parent="1" source="step3_box" target="step4_box">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrow V->Step4 -->
+        <mxCell id="arr6" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0"
+                edge="1" parent="1" source="v" target="step4_box">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Output -->
+        <mxCell id="output" value="Output" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6"
+                vertex="1" parent="1">
+          <mxGeometry x="450" y="510" width="100" height="50"/>
+        </mxCell>
+
+        <!-- Arrow Step4->Output -->
+        <mxCell id="arr7" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0"
+                edge="1" parent="1" source="step4_box" target="output">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Formula -->
+        <mxCell id="formula" value="Attention(Q,K,V) = softmax(QK&#xB7; / &#x221A;d&#x2096;)V" style="text;html=1;align=center;fontSize=14;fontStyle=2"
+                vertex="1" parent="1">
+          <mxGeometry x="350" y="600" width="300" height="30"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

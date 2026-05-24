@@ -1,0 +1,81 @@
+# MkDocs Configuration for LLM_From_ZERO
+
+site_name: 从零构建大语言模型
+site_description: 一个以叙事方式展开的LLM技术教程，从Tokenize到DeepSeek的技术之旅
+
+site_url: https://github.com/your-repo/LLM_From_ZERO
+repo_url: https://github.com/your-repo/LLM_From_ZERO
+repo_name: LLM_From_ZERO
+
+theme:
+  name: material
+  language: zh
+  palette:
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+
+plugins:
+  - search:
+      lang:
+        - en
+        - zh
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchorlinenums: true
+  - pymdownx.superfences
+  - pymdownx.snippets
+  - admonition
+  - tables
+  - attr_list
+  - md_in_html
+
+nav:
+  - 首页: index.md
+  - 第一章 Tokenizer:
+    - chapters/01_tokenizer.md
+  - 第二章 Embedding:
+    - chapters/02_embedding.md
+  - 第三章 Attention:
+    - chapters/03_attention.md
+  - 第四章 GPT与Scaling:
+    - chapters/04_gpt_scaling.md
+  - 第五章 RoPE:
+    - chapters/05_rope.md
+  - 第六章 MoE:
+    - chapters/06_moe.md
+  - 第七章 量化:
+    - chapters/07_quantization.md
+  - 第八章 RAG:
+    - chapters/08_rag.md
+  - 第九章 Function Calling:
+    - chapters/09_function_calling.md
+  - 第十章 DeepSeek集大成:
+    - chapters/10_deepseek.md
+  - 第十一章 微调:
+    - chapters/11_finetuning.md
+  - 第十二章 推理优化:
+    - chapters/12_inference.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-repo/LLM_From_ZERO
