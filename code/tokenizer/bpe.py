@@ -66,14 +66,20 @@ class BPETokenizer:
             if verbose and (i + 1) % 1000 == 0:
                 print(f"已合并 {i + 1} 次, 当前词表大小: {256 + i + 1}")
 
-        # 构建词表
+        # 构建词表 - vocab[256+i] 对应第i个合并的完整结果
         for i, (a, b) in enumerate(self.merges):
-            # a和b是原始字节值(0-255)，直接用bytes([a]) + bytes([b])构建
-            self.vocab[256 + i] = bytes([a]) + bytes([b])
+            # a和b是原始字节值(0-255)
+            # 构建合并后的完整字节序列
+            self.vocab[256 + i] = self.vocab[a] + self.vocab[b]
+
+    def _build_merge_map(self) -> Dict[Tuple[int, int], int]:
+        """构建 (a,b) -> token_id 的映射"""
+        return {pair: 256 + i for i, pair in enumerate(self.merges)}
 
     def encode(self, text: str) -> List[int]:
         """编码文本"""
         tokens = list(text.encode('utf-8'))
+        merge_map = self._build_merge_map()
 
         # 持续查找可合并的字符对并合并
         changed = True
@@ -84,9 +90,8 @@ class BPETokenizer:
             while i < len(tokens):
                 if i < len(tokens) - 1:
                     pair = (tokens[i], tokens[i + 1])
-                    if pair in self.merges:
-                        merge_idx = self.merges.index(pair)
-                        new_tokens.append(256 + merge_idx)
+                    if pair in merge_map:
+                        new_tokens.append(merge_map[pair])
                         i += 2
                         changed = True
                         continue
@@ -105,11 +110,31 @@ class BPETokenizer:
             else:
                 idx = id_ - 256
                 if 0 <= idx < len(self.merges):
+                    # 递归展开合并的 token
                     a, b = self.merges[idx]
-                    result.extend([a, b])
+                    # a 和 b 是字节值 (0-255) 或 合并 token id (>=256)
+                    if a < 256:
+                        result.append(a)
+                    else:
+                        # 递归展开
+                        result.extend(self._decode_single(a))
+                    if b < 256:
+                        result.append(b)
+                    else:
+                        result.extend(self._decode_single(b))
                 else:
                     result.append(id_)
         return bytes(result).decode('utf-8', errors='replace')
+
+    def _decode_single(self, id_: int) -> List[int]:
+        """递归解码单个 token"""
+        if id_ < 256:
+            return [id_]
+        idx = id_ - 256
+        if 0 <= idx < len(self.merges):
+            a, b = self.merges[idx]
+            return self._decode_single(a) + self._decode_single(b)
+        return [id_]
 
     def save(self, path: str):
         """保存词表"""

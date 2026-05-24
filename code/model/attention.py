@@ -203,10 +203,15 @@ class RoPEAttention(nn.Module):
         return freqs
 
     def apply_rope(self, x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
-        """应用旋转位置编码"""
-        x_complex = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+        """应用旋转位置编码，保持输入精度"""
+        # 获取原始dtype并保持一致
+        orig_dtype = x.dtype
+        # view_as_complex需要float类型，但保持原始精度
+        x = x.float()  # 转换以进行复数运算
+        x_complex = torch.view_as_complex(x.reshape(*x.shape[:-1], -1, 2))
         x_rot = torch.view_as_real(x_complex * freqs.unsqueeze(0))
-        return x_rot.flatten(-2)
+        # 转回原始精度
+        return x_rot.flatten(-2).to(orig_dtype)
 
     def forward(
         self,

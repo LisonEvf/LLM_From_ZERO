@@ -48,24 +48,6 @@ class CasualMaskDataLoader(DataLoader):
         return ~mask  # 改为 True=保留
 
 
-def compute_loss(model, input_ids, attention_mask=None, config=None):
-    """计算语言模型损失"""
-    logits = model(input_ids, attention_mask=attention_mask)
-
-    # 移位：预测下一个 token
-    shift_logits = logits[:, :-1, :].contiguous()
-    shift_labels = input_ids[:, 1:].contiguous()
-
-    # 计算交叉熵
-    loss_fct = nn.CrossEntropyLoss(ignore_index=0)  # 假设 0 是 padding
-    loss = loss_fct(
-        shift_logits.view(-1, shift_logits.size(-1)),
-        shift_labels.view(-1)
-    )
-
-    return loss
-
-
 def evaluate_model(model, dataloader, device):
     """评估模型困惑度"""
     model.eval()

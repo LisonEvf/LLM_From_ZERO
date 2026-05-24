@@ -124,31 +124,24 @@ class MoEFeedForward(nn.Module):
         # 初始化输出
         output = torch.zeros_like(x)
 
-        # 处理每个 expert
+        # 按专家分组，批量处理
         for expert_id, expert in enumerate(self.experts):
-            # 找出哪些 token 需要这个 expert
-            mask = (top_k_indices == expert_id).any(dim=-1)  # (batch, seq_len)
+            # 找出哪些位置的 token 需要这个专家（每个 token 可能被多个专家处理）
+            # top_k_indices: (batch, seq_len, top_k)
+            # 找出所有用到这个专家的位置（对于每个 top_k 位置）
+            for k_idx in range(self.top_k):
+                mask_k = top_k_indices[:, :, k_idx] == expert_id  # (batch, seq_len)
 
-            if mask.any():
-                # 获取该 expert 处理的 token
-                expert_input = x[mask]
+                if mask_k.any():
+                    # 收集这个专家处理的 token
+                    active_tokens = x[mask_k]  # (num_active, d_model)
+                    active_weights = top_k_weights[:, :, k_idx][mask_k]  # (num_active,)
 
-                # 计算这个 expert 的输出
-                expert_output = expert(expert_input)  # (active_tokens, d_model)
+                    # 批量计算
+                    expert_output = expert(active_tokens)  # (num_active, d_model)
 
-                # 获取对应的权重
-                weights = torch.zeros(batch_size, seq_len, device=x.device)
-                for i in range(self.top_k):
-                    expert_mask = (top_k_indices[:, :, i] == expert_id)
-                    weight_mask = expert_mask & mask
-                    if weight_mask.any():
-                        # 找到这个 expert 在 top_k 中的位置
-                        indices = top_k_indices[weight_mask]
-                        ws = top_k_weights[weight_mask, torch.arange(self.top_k, device=x.device)[None]].gather(1, indices.unsqueeze(1))
-                        weights[weight_mask] = ws.squeeze(-1)
-
-                # 累加到输出
-                output[mask] += expert_output * weights[mask].unsqueeze(-1)
+                    # 累加到对应位置
+                    output[mask_k] += expert_output * active_weights.unsqueeze(-1)
 
         return output
 
