@@ -54,6 +54,7 @@ class GPTModel(nn.Module):
 
         self.vocab_size = vocab_size
         self.d_model = d_model
+        self.max_seq_len = max_seq_len
 
         self.embeddings = GPTEmbeddings(vocab_size, d_model, max_seq_len)
         self.dropout = nn.Dropout(dropout)
@@ -67,7 +68,7 @@ class GPTModel(nn.Module):
         self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
 
         # 权重绑定：token embedding 和 lm head 共享
-        self.lm_head.weight = self.token_embedding.weight
+        self.lm_head.weight = self.embeddings.token_embedding.weight
 
     def forward(
         self,
@@ -125,7 +126,7 @@ class GPTModel(nn.Module):
 
         for _ in range(max_new_tokens):
             # 截断到最大长度
-            input_ids_cond = input_ids if input_ids.size(1) <= 2048 else input_ids[:, -2048:]
+            input_ids_cond = input_ids if input_ids.size(1) <= self.max_seq_len else input_ids[:, -self.max_seq_len:]
 
             # 前向传播
             logits = self.forward(input_ids_cond)
@@ -135,8 +136,9 @@ class GPTModel(nn.Module):
 
             # Top-k 过滤
             if top_k is not None:
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = float('-inf')
+                topk_logits, topk_indices = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits = torch.full_like(logits, float('-inf'))
+                logits.scatter_(1, topk_indices, topk_logits)
 
             # Top-p (nucleus) 过滤
             if top_p is not None:
@@ -180,6 +182,7 @@ class RoPEGPTModel(nn.Module):
 
         self.vocab_size = vocab_size
         self.d_model = d_model
+        self.max_seq_len = max_seq_len
 
         self.token_embedding = nn.Embedding(vocab_size, d_model)
         self.dropout = nn.Dropout(dropout)
@@ -224,7 +227,7 @@ class RoPEGPTModel(nn.Module):
         """简化版生成"""
         self.eval()
         for _ in range(max_new_tokens):
-            input_ids_cond = input_ids if input_ids.size(1) <= 2048 else input_ids[:, -2048:]
+            input_ids_cond = input_ids if input_ids.size(1) <= self.max_seq_len else input_ids[:, -self.max_seq_len:]
             logits = self.forward(input_ids_cond)[:, -1, :]
             next_token = torch.argmax(logits, dim=-1, keepdim=True)
             input_ids = torch.cat([input_ids, next_token], dim=1)
@@ -271,7 +274,10 @@ def create_gpt_config(model_size: str) -> dict:
 
 
 if __name__ == "__main__":
-    # 测试
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
     config = create_gpt_config("gpt2-small")
     model = GPTModel(**config)
 

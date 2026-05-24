@@ -26,6 +26,17 @@ class TextDataset(Dataset):
         return x, y
 
 
+def process_batch(batch, device):
+    """统一批处理：数据迁移到设备，构造输入和目标"""
+    input_ids, targets = batch
+    input_ids = input_ids.to(device)
+    targets = targets.to(device)
+    # 输入为前n-1个token，目标为后n-1个token
+    inputs = input_ids[:, :-1]
+    targets = targets[:, 1:]
+    return inputs, targets
+
+
 class CasualMaskDataLoader(DataLoader):
     """带 casual mask 的 DataLoader"""
 
@@ -34,9 +45,9 @@ class CasualMaskDataLoader(DataLoader):
 
     @staticmethod
     def create_causal_mask(seq_len: int, device: torch.device) -> torch.Tensor:
-        """创建 causal mask"""
+        """创建 causal mask (True=保留，False=屏蔽)"""
         mask = torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1).bool()
-        return mask
+        return ~mask  # 改为 True=保留
 
 
 def compute_loss(model, input_ids, attention_mask=None, config=None):
@@ -63,23 +74,19 @@ def evaluate_model(model, dataloader, device):
     total_loss = 0
     num_batches = 0
 
+    loss_fct = nn.CrossEntropyLoss(ignore_index=0)
+
     with torch.no_grad():
         for batch in dataloader:
-            input_ids, labels = batch
-            input_ids = input_ids.to(device)
-            labels = labels.to(device)
+            inputs, targets = process_batch(batch, device)
 
             # 前向传播
-            logits = model(input_ids)
+            logits = model(inputs)
 
             # 计算损失
-            shift_logits = logits[:, :-1, :].contiguous()
-            shift_labels = labels[:, 1:].contiguous()
-
-            loss_fct = nn.CrossEntropyLoss(ignore_index=0)
             loss = loss_fct(
-                shift_logits.view(-1, shift_logits.size(-1)),
-                shift_labels.view(-1)
+                logits.view(-1, logits.size(-1)),
+                targets.view(-1)
             )
 
             total_loss += loss.item()
@@ -108,19 +115,27 @@ def train(
         optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_steps
     )
 
+    loss_fct = nn.CrossEntropyLoss(ignore_index=0)
+
     model.train()
     global_step = 0
 
     for epoch in range(epochs):
-        for batch_idx, (input_ids, labels) in enumerate(train_dataloader):
+        for batch_idx, (input_ids, targets) in enumerate(train_dataloader):
             input_ids = input_ids.to(device)
-            labels = labels.to(device)
+            targets = targets.to(device)
+
+            # 输入为前n-1个token，目标为后n-1个token
+            inputs = input_ids[:, :-1]
 
             # 前向传播
-            logits = model(input_ids)
+            logits = model(inputs)
 
             # 计算损失
-            loss = compute_loss(model, input_ids)
+            loss = loss_fct(
+                logits.view(-1, logits.size(-1)),
+                targets.view(-1)
+            )
 
             # 反向传播
             optimizer.zero_grad()
@@ -158,7 +173,10 @@ def train(
 
 
 if __name__ == "__main__":
-    # 简单测试
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
     from code.model.gpt import create_gpt_config, GPTModel
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

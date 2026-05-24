@@ -119,7 +119,7 @@ def benchmark_attention(
 
     # FlashAttention
     start = time.perf_counter()
-    output2 = flash_attention(Q, K, K)
+    output2 = flash_attention(Q, K, V)
     if device == "cuda":
         torch.cuda.synchronize()
     flash_time = time.perf_counter() - start

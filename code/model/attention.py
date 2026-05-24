@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-from typing import Optional
+from typing import Optional, Tuple
 
 
 class MultiHeadAttention(nn.Module):
@@ -78,7 +78,7 @@ class MultiHeadAttention(nn.Module):
         scores = torch.matmul(Q, K.transpose(-2, -1)) * self.scale
 
         if mask is not None:
-            scores = scores.masked_fill(mask == 0, float('-inf'))
+            scores = scores.masked_fill(~mask, float('-inf'))
 
         attention_weights = F.softmax(scores, dim=-1)
         attention_weights = self.dropout(attention_weights)
@@ -102,9 +102,16 @@ class FlashAttention(nn.Module):
 
     def __init__(self, d_model: int, num_heads: int, dropout: float = 0.0):
         super().__init__()
-        self.attention = nn.MultiheadAttention(
-            d_model, num_heads, dropout=dropout, batch_first=True
-        )
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_k = d_model // num_heads
+
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
+        self.W_o = nn.Linear(d_model, d_model)
+
+        self.dropout = dropout
 
     def forward(
         self,
@@ -122,31 +129,44 @@ class FlashAttention(nn.Module):
             key: (batch, seq_len_k, d_model)
             value: (batch, seq_len_v, d_model)
             is_causal: 是否应用 causal mask
-            mask: 可选的自定义掩码
+            mask: 可选的自定义掩码，True=保留，False=屏蔽
 
         返回:
             output: (batch, seq_len_q, d_model)
             attention_weights: (batch, num_heads, seq_len_q, seq_len_k)
         """
-        # scaled_dot_product_attention 自动使用 FlashAttention
+        batch_size, seq_len_q, _ = query.shape
+        seq_len_k = key.size(1)
+
+        # 线性投影
+        Q = self.W_q(query).view(batch_size, seq_len_q, self.num_heads, self.d_k).transpose(1, 2)
+        K = self.W_k(key).view(batch_size, seq_len_k, self.num_heads, self.d_k).transpose(1, 2)
+        V = self.W_v(value).view(batch_size, seq_len_k, self.num_heads, self.d_k).transpose(1, 2)
+
+        # 使用 SDPA (FlashAttention)
         output = F.scaled_dot_product_attention(
-            query, key, value,
+            Q, K, V,
             attn_mask=mask,
             is_causal=is_causal,
-            dropout_p=self.attention.dropout if self.training else 0.0
+            dropout_p=self.dropout if self.training else 0.0
         )
 
-        # 返回 weights 用于可视化（需要手动计算）
+        # 合并头
+        output = output.transpose(1, 2).contiguous().view(batch_size, seq_len_q, self.d_model)
+        output = self.W_o(output)
+
+        # 近似返回 weights（用于可视化）
         with torch.no_grad():
-            weights = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(query.size(-1))
+            scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
             if is_causal:
-                seq_len_q = query.size(1)
                 causal_mask = torch.triu(
-                    torch.ones(seq_len_q, seq_len_q, device=query.device),
+                    torch.ones(seq_len_q, seq_len_k, device=query.device),
                     diagonal=1
                 ).bool()
-                weights = weights.masked_fill(causal_mask, float('-inf'))
-            weights = F.softmax(weights, dim=-1)
+                scores = scores.masked_fill(causal_mask, float('-inf'))
+            if mask is not None:
+                scores = scores.masked_fill(~mask, float('-inf'))
+            weights = F.softmax(scores, dim=-1)
 
         return output, weights
 
@@ -195,10 +215,11 @@ class RoPEAttention(nn.Module):
             query: (batch, seq_len_q, d_model)
             key: (batch, seq_len_k, d_model)
             value: (batch, seq_len_v, d_model)
-            position_ids: 位置索引，用于获取 RoPE 频率
+            position_ids: 位置索引，用于获取 RoPE 频率，默认自动创建
             is_causal: 是否应用 causal mask
         """
-        batch_size, seq_len, _ = query.shape
+        batch_size, seq_len_q, _ = query.shape
+        seq_len_k = key.size(1)
 
         # 投影
         Q = self.W_q(query)
@@ -206,23 +227,28 @@ class RoPEAttention(nn.Module):
         V = self.W_v(value)
 
         # 分割头
-        Q = Q.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
-        K = K.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
-        V = V.view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
+        Q = Q.view(batch_size, seq_len_q, self.num_heads, self.d_k).transpose(1, 2)
+        K = K.view(batch_size, seq_len_k, self.num_heads, self.d_k).transpose(1, 2)
+        V = V.view(batch_size, seq_len_k, self.num_heads, self.d_k).transpose(1, 2)
 
-        # 应用 RoPE
+        # 应用 RoPE（支持交叉注意力：Q和K可以有不同的位置编码）
         if position_ids is None:
-            position_ids = torch.arange(seq_len, device=query.device)
+            position_ids_q = torch.arange(seq_len_q, device=query.device)
+            position_ids_k = torch.arange(seq_len_k, device=key.device)
+        else:
+            position_ids_q = position_ids
+            position_ids_k = position_ids
 
-        freqs = self.freqs[position_ids]
-        Q = self.apply_rope(Q, freqs)
-        K = self.apply_rope(K, freqs)
+        freqs_q = self.freqs[position_ids_q]
+        freqs_k = self.freqs[position_ids_k]
+        Q = self.apply_rope(Q, freqs_q)
+        K = self.apply_rope(K, freqs_k)
 
         # FlashAttention 计算
         output = F.scaled_dot_product_attention(Q, K, V, is_causal=is_causal)
 
         # 合并头
-        output = output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.d_model)
+        output = output.transpose(1, 2).contiguous().view(batch_size, seq_len_q, self.d_model)
         output = self.W_o(output)
 
         return output
